@@ -1,7 +1,12 @@
-import requests, json, time, os
+import requests, json, time
+from datetime import datetime
+import dateutil.tz
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+IST = dateutil.tz.gettz("Asia/Kolkata")
 
 
 class Pocket:
@@ -20,7 +25,6 @@ class Pocket:
         }
 
         response = requests.post(url=url, headers=self.headers, data=json.dumps(params))
-
         response_dict = response.json()["list"]
 
         blocks = [
@@ -52,16 +56,9 @@ class Pocket:
             for item in [response_dict[key] for key in response_dict.keys()]
         ]
 
-        id_content = {
-            x: {
-                "title": response_dict[x]["excerpt"][0:279].replace("\n", " "),
-                "url": response_dict[x]["resolved_url"],
-            }
-            for x in response_dict
-        }
         print(f"Get blocks: ", response)
 
-        return blocks, id_content
+        return blocks
 
 
 class Notion:
@@ -81,7 +78,7 @@ class Notion:
         response = requests.get(url=blocks_url, headers=self.headers)
         responses = [
             (
-                time.sleep(0.1),
+                time.sleep(0),
                 requests.delete(
                     url=f"https://api.notion.com/v1/blocks/{block_id}",
                     headers=self.headers,
@@ -95,7 +92,6 @@ class Notion:
         return self
 
     def append_blocks(self, blocks):
-
         blocks_url = f"{self.base_url}/blocks/009e563a87e648d090ac4d300351230c/children"
 
         body = {"children": blocks}
@@ -109,71 +105,17 @@ class Notion:
         return True
 
 
-class Discord:
-    def __init__(self, webhook_url):
-        self.webhook_url = webhook_url
-        self.headers = {"Content-Type": "application/json"}
+blocks = Pocket(
+    consumer_key=os.getenv("POCKET_CONSUMER_KEY"),
+    access_token=os.getenv("POCKET_ACCESS_TOKEN"),
+    base_url="https://getpocket.com/v3",
+).get_items()
 
-    def send_request(self, content):
-        url = self.webhook_url
-
-        data = {
-            "content": content,
-            "username": "pocket",
-            "avatar_url": "https://cdn.discordapp.com/attachments/431354432987594763/1073869298151464960/Pocket_service-Icon-White-Dark-Background-Logo.png",
-        }
-
-        requests.post(url=url, data=json.dumps(data), headers=self.headers)
-
-    def discord_check(self, id_content):
-        with open("discord_check.json", "r") as f:
-            flags = json.load(f)
-
-        for key in id_content:
-            if key not in flags.keys():
-                flags[key] = 0
-            else:
-                pass
-
-        for key in id_content:
-            title = id_content[key]["title"]
-            url = id_content[key]["url"]
-            if flags[key] == 0:
-                self.send_request(
-                    "**-----------------------------------------------------------------------------------------------------------------**\n\n>>> **"
-                    + title
-                    + "**\n\n"
-                    + url
-                )
-                flags[key] = 1
-            else:
-                continue
-
-        with open("discord_check.json", "w") as f:
-            json.dump(flags, f, indent=4)
-
-        print(f"Discord check: ", True)
-
-
-def lambda_handler(event=None, context=None):
-    blocks, id_content = Pocket(
-        consumer_key=os.getenv("POCKET_CONSUMER_KEY"),
-        access_token=os.getenv("POCKET_ACCESS_TOKEN"),
-        base_url="https://getpocket.com/v3",
-    ).get_items()
-
-    flag = (
-        Notion(
-            auth_token=os.getenv("NOTION_AUTH_TOKEN"),
-            base_url="https://api.notion.com/v1",
-        )
-        .delete_blocks()
-        .append_blocks(blocks)
+flag = (
+    Notion(
+        auth_token=os.getenv("NOTION_AUTH_TOKEN"),
+        base_url="https://api.notion.com/v1",
     )
-
-    print(flag)
-
-    Discord(webhook_url=os.getenv("WEBHOOK_URL")).discord_check(id_content)
-
-
-lambda_handler()
+    .delete_blocks()
+    .append_blocks(blocks)
+)
