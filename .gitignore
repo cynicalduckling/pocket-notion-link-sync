@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 pockets_get_access_token.py
+*.ipynb
 
 # Distribution / packaging
 .Python
